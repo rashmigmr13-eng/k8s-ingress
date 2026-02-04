@@ -4,7 +4,7 @@ pipeline {
     environment {
         IMAGE = "rashmidevops1/test-dev"
         TAG = "${BUILD_NUMBER}"
-        DOMAIN = "micro123.duckdns.org"
+        DOMAIN = "203.0.113.25"   // Replace with your MicroK8s server public IP
         NODEPORT = "30080"
     }
 
@@ -48,7 +48,10 @@ pipeline {
 
         stage('Verify') {
             steps {
-                sh "curl http://$DOMAIN:$NODEPORT"
+                sh """
+                sleep 10
+                curl http://$DOMAIN:$NODEPORT
+                """
             }
         }
     }
