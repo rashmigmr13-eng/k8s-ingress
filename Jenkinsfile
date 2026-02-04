@@ -1,12 +1,17 @@
 pipeline {
     agent any
+
     environment {
-        DOCKER_USER = 'rashmidevops1'
+        IMAGE_NAME = "rashmidevops1/test-dev"
+        IMAGE_TAG  = "7"
+        DEPLOY_FILE = "deploy.yaml"
     }
+
     stages {
-        stage('Checkout SCM') {
+
+        stage('Checkout Jenkinsfile Repo') {
             steps {
-                checkout scm
+                git url: 'https://github.com/rashmigmr13-eng/k8s-ingress.git', branch: 'master'
             }
         }
 
@@ -18,15 +23,17 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh 'docker build -t rashmidevops1/test-dev:7 .'
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
 
         stage('Docker Login') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'docker-hub-password', 
-                                                  usernameVariable: 'DOCKER_USER', 
-                                                  passwordVariable: 'DOCKER_PASS')]) {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-hub-password',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
                     sh 'echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin'
                 }
             }
@@ -34,33 +41,35 @@ pipeline {
 
         stage('Push Image') {
             steps {
-                sh 'docker push rashmidevops1/test-dev:7'
+                sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh '''
-                   sed -i s|IMAGE_PLACEHOLDER|rashmidevops1/test-dev:7|g deploy.yaml
-                   microk8s kubectl apply -f deploy.yaml
-                   microk8s kubectl rollout status deployment/my-deploy-app
-                   '''
+                // Replace IMAGE_PLACEHOLDER in deploy.yaml with the new image
+                sh "sed -i \"s|IMAGE_PLACEHOLDER|${IMAGE_NAME}:${IMAGE_TAG}|g\" ${DEPLOY_FILE}"
+                sh "microk8s kubectl apply -f ${DEPLOY_FILE}"
+                sh "microk8s kubectl rollout status deployment/my-deploy-app"
             }
         }
 
         stage('Verify Deployment') {
             steps {
-                echo 'Waiting 10 seconds for service to be reachable...'
-                sh 'sleep 10'
-                echo 'Checking application URL...'
-                sh 'curl -f http://3.9.172.47:30080'
+                echo "Waiting 10 seconds for service to be reachable..."
+                sh "sleep 10"
+                echo "Checking application URL..."
+                sh "curl -f http://3.9.172.47:30080"
             }
         }
     }
 
     post {
+        success {
+            echo "✅ Pipeline succeeded"
+        }
         failure {
-            echo '❌ Pipeline failed'
+            echo "❌ Pipeline failed"
         }
     }
 }
