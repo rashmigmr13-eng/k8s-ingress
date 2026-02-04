@@ -10,13 +10,13 @@ pipeline {
 
     stages {
 
-        stage('Clone') {
+        stage('Clone App Repo') {
             steps {
-                git url: 'https://github.com/manjukolkar/scroll-web.git', branch: 'main'
+                git url: 'https://github.com/manjukolkar/scroll-web.git', branch: 'master'
             }
         }
 
-        stage('Build Image') {
+        stage('Build Docker Image') {
             steps {
                 sh "docker build -t $IMAGE:$TAG ."
             }
@@ -36,7 +36,7 @@ pipeline {
             }
         }
 
-        stage('Deploy Kubernetes') {
+        stage('Deploy to Kubernetes') {
             steps {
                 sh """
                 sed -i 's|IMAGE_PLACEHOLDER|$IMAGE:$TAG|g' deploy.yaml
