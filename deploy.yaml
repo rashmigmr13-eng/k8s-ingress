@@ -24,28 +24,10 @@ kind: Service
 metadata:
   name: devops-service
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: my-app
   ports:
   - port: 80
     targetPort: 80
-
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: devops-ingress
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: micro123.duckdns.org
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: devops-service
-            port:
-              number: 80
+    nodePort: 30080
