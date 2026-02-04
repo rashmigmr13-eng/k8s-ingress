@@ -4,8 +4,8 @@ pipeline {
     environment {
         IMAGE = "rashmidevops1/test-dev"
         TAG = "${BUILD_NUMBER}"
-        DOMAIN = "203.0.113.25"   // Replace with your MicroK8s server public IP
-        NODEPORT = "30080"
+        DOMAIN = "3.9.172.47"   // Your public IP
+        NODEPORT = "30080"       // NodePort for external access
     }
 
     stages {
@@ -39,26 +39,32 @@ pipeline {
         stage('Deploy to Kubernetes') {
             steps {
                 sh """
+                # Replace placeholder image with the new build
                 sed -i 's|IMAGE_PLACEHOLDER|$IMAGE:$TAG|g' deploy.yaml
+
+                # Apply deployment, service, ingress
                 microk8s kubectl apply -f deploy.yaml
+
+                # Wait for deployment to complete
                 microk8s kubectl rollout status deployment/my-deploy-app
                 """
             }
         }
 
-        stage('Verify') {
+        stage('Verify Deployment') {
             steps {
-                sh """
-                sleep 10
-                curl http://$DOMAIN:$NODEPORT
-                """
+                echo "Waiting 10 seconds for service to be reachable..."
+                sh "sleep 10"
+
+                echo "Checking application URL..."
+                sh "curl -f http://$DOMAIN:$NODEPORT || exit 1"
             }
         }
     }
 
     post {
         success {
-            echo "✅ Deployment successful"
+            echo "✅ Deployment successful! Visit: http://$DOMAIN:$NODEPORT"
         }
         failure {
             echo "❌ Pipeline failed"
