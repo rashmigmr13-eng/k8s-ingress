@@ -2,117 +2,63 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = 'rashmidevops1/test-dev:latest'
-        DEPLOY_FILE  = 'deploy.yaml'
-        DOMAIN       = 'micro123.duckdns.org'
+        IMAGE = "rashmidevops1/test-dev"
+        TAG = "${BUILD_NUMBER}"
+        DOMAIN = "micro123.duckdns.org"
+        NODEPORT = "30080"
     }
 
     stages {
 
-        stage('User Confirmation') {
+        stage('Clone') {
             steps {
-                script {
-                    def userInput = input(
-                        id: 'userConfirm',
-                        message: 'Do you want to build this project?',
-                        parameters: [choice(name: 'CONFIRM', choices: ['Yes', 'No'], description: 'Select Yes to proceed or No to abort')]
-                    )
-                    if (userInput == 'No') {
-                        echo "🚫 Build aborted by user."
-                        currentBuild.result = 'ABORTED'
-                        error("User chose not to proceed.")
-                    }
+                git url: 'https://github.com/manjukolkar/scroll-web.git', branch: 'main'
+            }
+        }
+
+        stage('Build Image') {
+            steps {
+                sh "docker build -t $IMAGE:$TAG ."
+            }
+        }
+
+        stage('Docker Login') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'U', passwordVariable: 'P')]) {
+                    sh 'echo $P | docker login -u $U --password-stdin'
                 }
             }
         }
 
-        stage('Select Branch') {
+        stage('Push Image') {
             steps {
-                script {
-                    def branchInput = input(
-                        id: 'branchSelect',
-                        message: 'Select the branch to build:',
-                        parameters: [string(name: 'BRANCH', defaultValue: 'master', description: 'Enter the branch name to build')]
-                    )
-                    env.BRANCH_NAME = branchInput
-                    echo "✅ Selected Branch: ${env.BRANCH_NAME}"
-                }
+                sh "docker push $IMAGE:$TAG"
             }
         }
 
-        stage('Clone Repository') {
+        stage('Deploy Kubernetes') {
             steps {
-                git branch: "${env.BRANCH_NAME}", url: 'https://github.com/manjukolkar/scroll-web.git'
+                sh """
+                sed -i 's|IMAGE_PLACEHOLDER|$IMAGE:$TAG|g' deploy.yaml
+                microk8s kubectl apply -f deploy.yaml
+                microk8s kubectl rollout status deployment/my-deploy-app
+                """
             }
         }
 
-        stage('Build Docker Image') {
+        stage('Verify') {
             steps {
-                sh '''
-                echo "🔧 Building Docker image..."
-                docker build -t $DOCKER_IMAGE .
-                '''
-            }
-        }
-
-        stage('Login to Docker Hub') {
-            steps {
-                script {
-                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
-                        sh '''
-                        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-                        '''
-                    }
-                }
-            }
-        }
-
-        stage('Push Docker Image') {
-            steps {
-                sh '''
-                echo "📦 Pushing image to Docker Hub..."
-                docker push $DOCKER_IMAGE
-                '''
-            }
-        }
-
-        stage('Deploy to Kubernetes') {
-            steps {
-                sh '''
-                echo "🚀 Deploying to Kubernetes..."
-                microk8s.kubectl apply -f $DEPLOY_FILE
-                echo "Waiting for pods to stabilize..."
-                sleep 20
-                microk8s.kubectl get pods
-                '''
-            }
-        }
-
-        stage('Apply Ingress & Verify') {
-            steps {
-                sh '''
-                echo "🌐 Applying Ingress for domain $DOMAIN ..."
-                microk8s.kubectl apply -f $DEPLOY_FILE
-                echo "Waiting for ingress to be ready..."
-                sleep 20
-                microk8s.kubectl get ingress
-                echo "🔍 Verifying application availability..."
-                curl -I http://$DOMAIN || echo "⚠️ Could not verify via curl, please check browser."
-                echo "✅ Deployment complete! Access: http://$DOMAIN"
-                '''
+                sh "curl http://$DOMAIN:$NODEPORT"
             }
         }
     }
 
     post {
         success {
-            echo '✅ CI/CD pipeline executed successfully. App deployed and accessible via Ingress.'
+            echo "✅ Deployment successful"
         }
         failure {
-            echo '❌ Build or deploy failed. Please review Jenkins logs.'
-        }
-        aborted {
-            echo '⚠️ Pipeline aborted by user.'
+            echo "❌ Pipeline failed"
         }
     }
 }
